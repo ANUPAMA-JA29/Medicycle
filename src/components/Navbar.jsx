@@ -221,7 +221,7 @@ export default function Navbar({ isLoggedIn, currentUser, currentView, onViewCha
                     </div>
                   </div>
                 )}
-
+              </div>
 
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-text-muted">
