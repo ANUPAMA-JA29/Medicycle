@@ -19,15 +19,6 @@ import {
   handleMedicineDonated, 
   handleDonationCompleted 
 } from "./services/automation";
-import { 
-  Activity, 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Lock, 
-  AlertTriangle, 
-  CheckCircle, 
 import {
   Activity,
   User,
