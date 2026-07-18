@@ -26,12 +26,12 @@ const firebaseConfig = {
 };
 
 // Check if Firebase keys are provided
-const isFirebaseConfigured = 
+export const isFirebaseConfigured = 
   firebaseConfig.apiKey && 
   firebaseConfig.projectId && 
   firebaseConfig.apiKey !== "undefined";
 
-let db = null;
+export let db = null;
 
 if (isFirebaseConfigured) {
   try {

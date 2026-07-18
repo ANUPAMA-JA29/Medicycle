@@ -1332,7 +1332,7 @@ export default function App() {
             VIEW 4: USER DASHBOARD (AUTHENTICATED)
             ========================================== */}
         {isLoggedIn && currentView === "dashboard" && (
-          <Dashboard medicines={medicines} onViewChange={setCurrentView} />
+          <Dashboard medicines={medicines} onViewChange={setCurrentView} currentUser={currentUser} />
         )}
 
         {/* ==========================================

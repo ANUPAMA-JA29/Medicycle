@@ -13,12 +13,45 @@ import {
   Trash2,
   Cpu,
   PlusCircle,
-  Clock
+  Clock,
+  Sparkles,
+  PieChart,
+  BarChart3,
+  TrendingUp
 } from "lucide-react";
 import { getNotifications, clearNotifications } from "../services/automation";
+import { db, isFirebaseConfigured } from "../services/firebase";
+import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { Pie, Bar, Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement
+} from "chart.js";
 
-export default function Dashboard({ medicines, onViewChange }) {
+// Register Chart.js elements
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement
+);
+
+export default function Dashboard({ medicines: propMedicines, onViewChange, currentUser }) {
   const [notifications, setNotifications] = useState([]);
+  const [localMedicines, setLocalMedicines] = useState(propMedicines || []);
 
   // Load and listen to notifications changes
   useEffect(() => {
@@ -30,6 +63,31 @@ export default function Dashboard({ medicines, onViewChange }) {
     return () => window.removeEventListener("medicycle_notif_refresh", loadNotifs);
   }, []);
 
+  // Real-time Firestore sync
+  useEffect(() => {
+    if (isFirebaseConfigured && db && currentUser?.email) {
+      const colRef = collection(db, "Medicines");
+      const q = query(colRef, where("userId", "==", currentUser.email));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const list = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          list.push({
+            ...data,
+            medicineId: docSnap.id,
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt
+          });
+        });
+        setLocalMedicines(list);
+      }, (error) => {
+        console.error("Firestore onSnapshot error:", error);
+      });
+      return () => unsubscribe();
+    } else {
+      setLocalMedicines(propMedicines || []);
+    }
+  }, [currentUser, propMedicines]);
+
   // Helper: calculate days remaining until expiry
   const getDaysRemaining = (expiryDateStr) => {
     const today = new Date();
@@ -40,29 +98,29 @@ export default function Dashboard({ medicines, onViewChange }) {
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // Metrics
-  const totalCount = medicines.length;
+  // Metrics calculations
+  const totalCount = localMedicines.length;
   
-  const expiringSoonCount = medicines.filter(m => {
+  const expiringSoon7Count = localMedicines.filter(m => {
     const days = getDaysRemaining(m.expiryDate);
-    return days <= 30 && days >= 0;
+    return days <= 7 && days >= 0;
   }).length;
 
-  const expiredCount = medicines.filter(m => {
+  const expiredCount = localMedicines.filter(m => {
     const days = getDaysRemaining(m.expiryDate);
     return days < 0;
   }).length;
 
-  const activeDonationsCount = medicines.filter(m => 
-    m.availableForDonation && (m.status === "Available" || m.status === "Requested")
+  const availableDonationsCount = localMedicines.filter(m => 
+    m.availableForDonation && m.status === "Available"
   ).length;
 
-  const completedDonatedCount = medicines.filter(m => 
+  const completedDonatedCount = localMedicines.filter(m => 
     m.availableForDonation && m.status === "Completed"
   ).length;
 
   // Recent medications that need attention (expired or expiring in <= 30 days)
-  const urgentMedicines = medicines
+  const urgentMedicines = localMedicines
     .filter(m => getDaysRemaining(m.expiryDate) <= 30)
     .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate))
     .slice(0, 4);
@@ -71,6 +129,164 @@ export default function Dashboard({ medicines, onViewChange }) {
     e.stopPropagation();
     const updated = clearNotifications();
     setNotifications(updated);
+  };
+
+  // ==========================================
+  // CHART DATA COMPILATION
+  // ==========================================
+
+  // 1. Pie Chart: Medicine Categories
+  const categoryCounts = {};
+  localMedicines.forEach(m => {
+    const cat = m.category || "General";
+    categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+  });
+
+  const pieLabels = Object.keys(categoryCounts);
+  const pieDataValues = Object.values(categoryCounts);
+
+  const pieData = {
+    labels: pieLabels.length > 0 ? pieLabels : ["No Data"],
+    datasets: [
+      {
+        data: pieDataValues.length > 0 ? pieDataValues : [1],
+        backgroundColor: pieLabels.length > 0 ? [
+          "#2e7d32", // primary green
+          "#4caf50", // primary accent green
+          "#0284c7", // sky-600
+          "#8b5cf6", // violet-500
+          "#f59e0b", // amber-500
+          "#f43f5e", // rose-500
+          "#0d9488", // teal-600
+          "#4f46e5"  // indigo-650
+        ] : ["#e5e7eb"], // gray fallback
+        borderWidth: 1.5,
+        borderColor: "#ffffff"
+      }
+    ]
+  };
+
+  const pieOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: "bottom",
+        labels: {
+          font: {
+            family: "Outfit",
+            size: 11
+          },
+          boxWidth: 12
+        }
+      },
+      tooltip: {
+        titleFont: { family: "Outfit" },
+        bodyFont: { family: "Outfit" }
+      }
+    }
+  };
+
+  // 2. Bar Chart: Monthly Donations
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dynamicDonations = Array(12).fill(0);
+  
+  localMedicines.forEach(m => {
+    if (m.availableForDonation && m.status === "Completed") {
+      const date = new Date(m.createdAt || Date.now());
+      const monthIdx = date.getMonth();
+      dynamicDonations[monthIdx] += 1;
+    }
+  });
+
+  const barDataValues = dynamicDonations;
+
+  const barData = {
+    labels: months,
+    datasets: [
+      {
+        label: "Donated Medicines",
+        data: barDataValues,
+        backgroundColor: "#2e7d32",
+        borderRadius: 4,
+        hoverBackgroundColor: "#1b5e20"
+      }
+    ]
+  };
+
+  const barOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        titleFont: { family: "Outfit" },
+        bodyFont: { family: "Outfit" }
+      }
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { family: "Outfit", size: 10 } }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { font: { family: "Outfit", size: 10 } }
+      }
+    }
+  };
+
+  // 3. Line Chart: Medicine Usage
+  const dynamicUsage = Array(12).fill(0);
+  localMedicines.forEach(m => {
+    const date = new Date(m.createdAt || Date.now());
+    const monthIdx = date.getMonth();
+    dynamicUsage[monthIdx] += m.quantity || 0;
+  });
+
+  const lineDataValues = dynamicUsage;
+
+  const lineData = {
+    labels: months,
+    datasets: [
+      {
+        label: "Stock & Usage Levels",
+        data: lineDataValues,
+        fill: true,
+        backgroundColor: "rgba(46, 125, 50, 0.15)",
+        borderColor: "#2e7d32",
+        tension: 0.4,
+        pointBackgroundColor: "#4caf50",
+        pointBorderColor: "#ffffff",
+        pointHoverRadius: 6
+      }
+    ]
+  };
+
+  const lineOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        titleFont: { family: "Outfit" },
+        bodyFont: { family: "Outfit" }
+      }
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { family: "Outfit", size: 10 } }
+      },
+      y: {
+        beginAtZero: true,
+        ticks: { font: { family: "Outfit", size: 10 } }
+      }
+    }
   };
 
   return (
@@ -94,13 +310,34 @@ export default function Dashboard({ medicines, onViewChange }) {
         </button>
       </div>
 
+      {/* AI Summary Card */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-primary/5 to-emerald-600/10 border border-primary/20 p-6 rounded-lg shadow-sm flex items-start gap-4 hover:shadow-md transition-all duration-300 relative overflow-hidden glass-card">
+        <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 animate-pulse">
+          <Sparkles className="w-6 h-6 text-primary" />
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-sm font-extrabold text-primary uppercase tracking-wider flex items-center gap-1.5">
+            AI Assistant Insights
+          </h3>
+          <p className="text-text-main text-base font-semibold leading-relaxed">
+            You currently have <span className="text-primary font-bold">{totalCount}</span> medicines.{" "}
+            <span className={expiringSoon7Count > 0 ? "text-red-650 font-bold" : "text-text-main font-semibold"}>
+              {expiringSoon7Count}
+            </span>{" "}
+            {expiringSoon7Count === 1 ? "medicine expires" : "medicines expire"} within 7 days.{" "}
+            <span className="text-primary font-bold">{availableDonationsCount}</span>{" "}
+            {availableDonationsCount === 1 ? "medicine is" : "medicines are"} available for donation.
+          </p>
+        </div>
+      </div>
+
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         
-        {/* Metric 1 */}
+        {/* Metric 1: Total Medicines */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div className="space-y-1">
-            <span className="text-sm font-semibold text-text-muted">Total Stock</span>
+            <span className="text-sm font-semibold text-text-muted">Total Medicines</span>
             <h3 className="text-3xl font-extrabold text-text-main">{totalCount}</h3>
             <span className="text-xs text-text-muted">Active items in shelf</span>
           </div>
@@ -109,13 +346,13 @@ export default function Dashboard({ medicines, onViewChange }) {
           </div>
         </div>
 
-        {/* Metric 2 */}
+        {/* Metric 2: Expiring Soon */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div className="space-y-1">
-            <span className="text-sm font-semibold text-text-muted">Expiring &lt; 30 Days</span>
-            <h3 className="text-3xl font-extrabold text-orange-600">{expiringSoonCount}</h3>
+            <span className="text-sm font-semibold text-text-muted">Expiring Soon (&le; 7 Days)</span>
+            <h3 className="text-3xl font-extrabold text-orange-600">{expiringSoon7Count}</h3>
             {expiredCount > 0 ? (
-              <span className="text-xs font-semibold text-red-600">{expiredCount} already expired</span>
+              <span className="text-xs font-semibold text-red-650">{expiredCount} already expired</span>
             ) : (
               <span className="text-xs text-text-muted">Requires action soon</span>
             )}
@@ -125,11 +362,11 @@ export default function Dashboard({ medicines, onViewChange }) {
           </div>
         </div>
 
-        {/* Metric 3 */}
+        {/* Metric 3: Available Donations */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div className="space-y-1">
-            <span className="text-sm font-semibold text-text-muted">Active Donations</span>
-            <h3 className="text-3xl font-extrabold text-primary">{activeDonationsCount}</h3>
+            <span className="text-sm font-semibold text-text-muted">Available Donations</span>
+            <h3 className="text-3xl font-extrabold text-primary">{availableDonationsCount}</h3>
             <span className="text-xs text-text-muted">Listed on marketplace</span>
           </div>
           <div className="w-12 h-12 rounded-full bg-primary-light text-primary flex items-center justify-center">
@@ -137,16 +374,80 @@ export default function Dashboard({ medicines, onViewChange }) {
           </div>
         </div>
 
-        {/* Metric 4 */}
+        {/* Metric 4: Completed Donations */}
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex items-center justify-between hover:shadow-md transition-all duration-300">
           <div className="space-y-1">
-            <span className="text-sm font-semibold text-text-muted">Donations Saved</span>
-            <h3 className="text-3xl font-extrabold text-emerald-700">{completedDonatedCount + 12450}</h3>
-            <span className="text-xs text-text-muted">Including benchmark data</span>
+            <span className="text-sm font-semibold text-text-muted">Completed Donations</span>
+            <h3 className="text-3xl font-extrabold text-emerald-700">{completedDonatedCount}</h3>
+            <span className="text-xs text-text-muted">Successfully delivered</span>
           </div>
           <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <ShieldCheck className="w-6 h-6" />
           </div>
+        </div>
+      </div>
+
+      {/* Visual Analytics & Reports Section */}
+      <div className="space-y-6">
+        <h2 className="text-2xl font-extrabold text-text-main tracking-tight">
+          Visual <span className="text-primary">Analytics & Reports</span>
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* Pie Chart: Categories */}
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+            <div>
+              <h3 className="text-base font-bold text-text-main flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-primary" />
+                Medicine Categories
+              </h3>
+              <p className="text-xs text-text-muted mt-1 mb-4">Distribution of items across different drug types.</p>
+            </div>
+            <div className="relative h-64 flex items-center justify-center">
+              {pieLabels.length > 0 ? (
+                <Pie data={pieData} options={pieOptions} />
+              ) : (
+                <div className="text-sm text-text-muted font-medium flex items-center justify-center h-full">No data available</div>
+              )}
+            </div>
+          </div>
+
+          {/* Bar Chart: Donations */}
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+            <div>
+              <h3 className="text-base font-bold text-text-main flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-primary" />
+                Monthly Donations
+              </h3>
+              <p className="text-xs text-text-muted mt-1 mb-4">Tracking successfully completed medical donations.</p>
+            </div>
+            <div className="relative h-64 flex items-center justify-center">
+              {barDataValues.some(val => val > 0) ? (
+                <Bar data={barData} options={barOptions} />
+              ) : (
+                <div className="text-sm text-text-muted font-medium flex items-center justify-center h-full">No data available</div>
+              )}
+            </div>
+          </div>
+
+          {/* Line Chart: Usage */}
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition-all duration-300">
+            <div>
+              <h3 className="text-base font-bold text-text-main flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Medicine Usage Levels
+              </h3>
+              <p className="text-xs text-text-muted mt-1 mb-4">Monthly dynamic stock levels in inventory.</p>
+            </div>
+            <div className="relative h-64 flex items-center justify-center">
+              {lineDataValues.some(val => val > 0) ? (
+                <Line data={lineData} options={lineOptions} />
+              ) : (
+                <div className="text-sm text-text-muted font-medium flex items-center justify-center h-full">No data available</div>
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
 
