@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { 
   ClipboardList, 
   AlertTriangle, 
@@ -8,10 +8,28 @@ import {
   List, 
   Gift, 
   ChevronRight, 
-  Activity 
+  Activity,
+  Bell,
+  Trash2,
+  Cpu,
+  PlusCircle,
+  Clock
 } from "lucide-react";
+import { getNotifications, clearNotifications } from "../services/automation";
 
 export default function Dashboard({ medicines, onViewChange }) {
+  const [notifications, setNotifications] = useState([]);
+
+  // Load and listen to notifications changes
+  useEffect(() => {
+    const loadNotifs = () => {
+      setNotifications(getNotifications());
+    };
+    loadNotifs();
+    window.addEventListener("medicycle_notif_refresh", loadNotifs);
+    return () => window.removeEventListener("medicycle_notif_refresh", loadNotifs);
+  }, []);
+
   // Helper: calculate days remaining until expiry
   const getDaysRemaining = (expiryDateStr) => {
     const today = new Date();
@@ -48,6 +66,12 @@ export default function Dashboard({ medicines, onViewChange }) {
     .filter(m => getDaysRemaining(m.expiryDate) <= 30)
     .sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate))
     .slice(0, 4);
+
+  const handleClearFeed = (e) => {
+    e.stopPropagation();
+    const updated = clearNotifications();
+    setNotifications(updated);
+  };
 
   return (
     <div className="space-y-8 animate-slideUp">
@@ -129,84 +153,173 @@ export default function Dashboard({ medicines, onViewChange }) {
       {/* Grid of details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left 2 Cols: Expiry warnings */}
-        <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-100 p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-            <h3 className="text-lg font-bold text-text-main flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-orange-500" />
-              Critical Expiry Alerts
-            </h3>
-            <button
-              onClick={() => onViewChange("medicine-list")}
-              className="text-primary hover:text-primary-hover font-bold text-sm flex items-center gap-1 transition-all"
-            >
-              View Full Inventory
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {urgentMedicines.length === 0 ? (
-            <div className="py-8 text-center text-text-muted space-y-2">
-              <ShieldCheck className="w-12 h-12 text-primary mx-auto opacity-70" />
-              <p className="font-medium text-text-main">All systems secure</p>
-              <p className="text-sm">No medicines are expired or expiring in the next 30 days.</p>
+        {/* Left 2 Cols: Expiry warnings and Notification Feed */}
+        <div className="lg:col-span-2 space-y-8">
+          
+          {/* Box 1: Expiry warnings */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+              <h3 className="text-lg font-bold text-text-main flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-500" />
+                Critical Expiry Alerts
+              </h3>
+              <button
+                onClick={() => onViewChange("medicine-list")}
+                className="text-primary hover:text-primary-hover font-bold text-sm flex items-center gap-1 transition-all"
+              >
+                View Full Inventory
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {urgentMedicines.map((m) => {
-                const days = getDaysRemaining(m.expiryDate);
-                let badgeColor = "bg-red-50 text-red-700 border-red-200";
-                let textStatus = `Expires in ${days} days`;
 
-                if (days < 0) {
-                  badgeColor = "bg-red-100 text-red-800 border-red-300 font-bold";
-                  textStatus = `EXPIRED (by ${Math.abs(days)} days)`;
-                } else if (days <= 7) {
-                  badgeColor = "bg-red-50 text-red-700 border-red-100";
-                  textStatus = `Expires in ${days} days (Urgent)`;
-                } else {
-                  badgeColor = "bg-yellow-50 text-yellow-800 border-yellow-100";
-                  textStatus = `Expires in ${days} days`;
-                }
+            {urgentMedicines.length === 0 ? (
+              <div className="py-8 text-center text-text-muted space-y-2">
+                <ShieldCheck className="w-12 h-12 text-primary mx-auto opacity-70" />
+                <p className="font-medium text-text-main">All systems secure</p>
+                <p className="text-sm">No medicines are expired or expiring in the next 30 days.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {urgentMedicines.map((m) => {
+                  const days = getDaysRemaining(m.expiryDate);
+                  let badgeColor = "bg-red-50 text-red-700 border-red-200";
+                  let textStatus = `Expires in ${days} days`;
 
-                return (
-                  <div key={m.medicineId} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      {m.medicineImage ? (
-                        <img 
-                          src={m.medicineImage} 
-                          alt={m.medicineName} 
-                          className="w-12 h-12 rounded object-cover border border-gray-100 flex-shrink-0"
-                          onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=300" }}
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center text-text-muted flex-shrink-0">
-                          <Activity className="w-5 h-5" />
+                  if (days < 0) {
+                    badgeColor = "bg-red-100 text-red-800 border-red-300 font-bold";
+                    textStatus = `EXPIRED (by ${Math.abs(days)} days)`;
+                  } else if (days <= 7) {
+                    badgeColor = "bg-red-50 text-red-700 border-red-100";
+                    textStatus = `Expires in ${days} days (Urgent)`;
+                  } else {
+                    badgeColor = "bg-yellow-50 text-yellow-800 border-yellow-100";
+                    textStatus = `Expires in ${days} days`;
+                  }
+
+                  return (
+                    <div key={m.medicineId} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        {m.medicineImage ? (
+                          <img 
+                            src={m.medicineImage} 
+                            alt={m.medicineName} 
+                            className="w-12 h-12 rounded object-cover border border-gray-100 flex-shrink-0"
+                            onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=300" }}
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded bg-gray-100 flex items-center justify-center text-text-muted flex-shrink-0">
+                            <Activity className="w-5 h-5" />
+                          </div>
+                        )}
+                        <div>
+                          <h4 className="font-bold text-text-main">{m.medicineName}</h4>
+                          <p className="text-xs text-text-muted">{m.manufacturer} • Batch: {m.batchNumber}</p>
                         </div>
-                      )}
-                      <div>
-                        <h4 className="font-bold text-text-main">{m.medicineName}</h4>
-                        <p className="text-xs text-text-muted">{m.manufacturer} • Batch: {m.batchNumber}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${badgeColor}`}>
+                          {textStatus}
+                        </span>
+                        {days >= 0 && !m.availableForDonation && (
+                          <button
+                            onClick={() => onViewChange("medicine-list")}
+                            className="px-3 py-1 text-xs font-bold text-primary border border-primary hover:bg-primary hover:text-white rounded transition-all"
+                          >
+                            Donate
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${badgeColor}`}>
-                        {textStatus}
-                      </span>
-                      {days >= 0 && !m.availableForDonation && (
-                        <button
-                          onClick={() => onViewChange("medicine-list")}
-                          className="px-3 py-1 text-xs font-bold text-primary border border-primary hover:bg-primary hover:text-white rounded transition-all"
-                        >
-                          Donate
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Box 2: System Notifications Feed */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 space-y-6">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+              <h3 className="text-lg font-bold text-text-main flex items-center gap-2">
+                <Bell className="w-5 h-5 text-primary" />
+                Automation Events Channel
+              </h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => onViewChange("automation")}
+                  className="text-primary hover:text-primary-hover font-bold text-sm flex items-center gap-1 transition-all"
+                  title="Configure Rules"
+                >
+                  <Cpu className="w-4 h-4" />
+                  Workflows Config
+                </button>
+                {notifications.length > 0 && (
+                  <button
+                    onClick={handleClearFeed}
+                    className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center gap-0.5 transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Clear Feed
+                  </button>
+                )}
+              </div>
             </div>
-          )}
+
+            {notifications.length === 0 ? (
+              <div className="py-8 text-center text-text-muted space-y-2">
+                <Bell className="w-12 h-12 text-primary mx-auto opacity-40" />
+                <p className="font-medium text-text-main font-semibold">Feed is idle</p>
+                <p className="text-xs">Incoming event triggers (Expiry Alerts, Donation Confirmation, Medicine Created) will render feeds in real-time.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                {notifications.slice(0, 5).map((notif) => {
+                  let Icon = Clock;
+                  let cardClass = "bg-blue-50/50 border-blue-100 text-blue-800";
+                  let iconClass = "bg-blue-105 text-blue-600";
+                  
+                  if (notif.type === "expiry") {
+                    Icon = AlertTriangle;
+                    cardClass = "bg-red-50/50 border-red-100 text-red-800";
+                    iconClass = "bg-red-100 text-red-600";
+                  } else if (notif.type === "donation") {
+                    Icon = HeartHandshake;
+                    cardClass = "bg-emerald-50/50 border-emerald-100 text-emerald-800";
+                    iconClass = "bg-emerald-100 text-primary";
+                  } else if (notif.type === "added") {
+                    Icon = PlusCircle;
+                    cardClass = "bg-blue-50/50 border-blue-100 text-blue-800";
+                    iconClass = "bg-blue-100 text-blue-600";
+                  }
+
+                  return (
+                    <div 
+                      key={notif.id} 
+                      className={`flex gap-3 p-4 rounded-md border text-xs items-start transition-all ${cardClass}`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${iconClass}`}>
+                        <Icon className="w-4.5 h-4.5" />
+                      </div>
+                      <div className="space-y-0.5 flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-4">
+                          <h4 className="font-extrabold text-sm truncate">{notif.title}</h4>
+                          <span className="font-semibold text-[10px] text-text-muted whitespace-nowrap">
+                            {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <p className="leading-relaxed opacity-90 mt-0.5">{notif.message}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {notifications.length > 5 && (
+                  <p className="text-center text-[11px] text-text-muted font-bold pt-2">
+                    Showing 5 of {notifications.length} notifications. Open Navbar Bell dropdown to view entire feed history.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* Right Col: Quick Actions & Guides */}

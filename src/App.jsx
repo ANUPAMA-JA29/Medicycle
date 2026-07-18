@@ -12,6 +12,22 @@ import {
   getDonationMedicines,
   updateDonationStatus
 } from "./services/firebase";
+import AutomationWorkflow from "./components/AutomationWorkflow";
+import { 
+  triggerExpiryCheck, 
+  handleMedicineAdded, 
+  handleMedicineDonated, 
+  handleDonationCompleted 
+} from "./services/automation";
+import { 
+  Activity, 
+  User, 
+  Mail, 
+  Phone, 
+  MapPin, 
+  Lock, 
+  AlertTriangle, 
+  CheckCircle, 
 import {
   Activity,
   User,
@@ -142,6 +158,9 @@ export default function App() {
 
       const allDonations = await getDonationMedicines();
       setDonationMedicines(allDonations);
+
+      // Trigger automatic checks for expiring medications
+      triggerExpiryCheck(userMeds, currentUser.email);
     } catch (e) {
       showToast("Error connecting to inventory database.", "error");
     } finally {
@@ -412,8 +431,11 @@ export default function App() {
         showToast("Medicine updated successfully.");
       } else {
         // Add flow
-        await addMedicine(currentUser.email, medData);
+        const medResult = await addMedicine(currentUser.email, medData);
         showToast("Medicine registered in inventory.");
+        
+        // Trigger automated workflow trigger
+        handleMedicineAdded(medResult, currentUser.email);
       }
       setEditingMedicine(null);
       setCurrentView("medicine-list");
@@ -442,8 +464,12 @@ export default function App() {
 
   const handleMarkDonate = async (id) => {
     try {
-      await updateMedicine(id, { availableForDonation: true, status: "Available" });
+      const updated = await updateMedicine(id, { availableForDonation: true, status: "Available" });
       showToast("Medicine marked for donation!");
+      
+      // Trigger donation list email warning/receipt
+      handleMedicineDonated(updated, currentUser.email);
+      
       fetchMedicinesData();
     } catch (e) {
       showToast("Failed to mark as donation.", "error");
@@ -452,8 +478,14 @@ export default function App() {
 
   const handleUpdateDonationStatus = async (id, status) => {
     try {
-      await updateDonationStatus(id, status);
+      const updated = await updateDonationStatus(id, status);
       showToast(`Donation status updated to ${status}.`);
+      
+      // Trigger donation completed updates
+      if (status === "Completed") {
+        handleDonationCompleted(updated, currentUser.email);
+      }
+      
       fetchMedicinesData();
     } catch (e) {
       showToast("Failed to update donation status.", "error");
@@ -1344,6 +1376,17 @@ export default function App() {
             donationMedicines={donationMedicines}
             onUpdateStatus={handleUpdateDonationStatus}
             currentUser={currentUser}
+          />
+        )}
+
+        {/* ==========================================
+            VIEW 9: AUTOMATION WORKFLOWS CONSOLE
+            ========================================== */}
+        {isLoggedIn && currentView === "automation" && (
+          <AutomationWorkflow 
+            medicines={medicines}
+            currentUser={currentUser}
+            onShowToast={showToast}
           />
         )}
 
