@@ -4,13 +4,13 @@ import Dashboard from "./components/Dashboard";
 import MedicineForm from "./components/MedicineForm";
 import MedicineList from "./components/MedicineList";
 import DonationPage from "./components/DonationPage";
-import { 
-  addMedicine, 
-  getMedicines, 
-  updateMedicine, 
-  deleteMedicine, 
-  getDonationMedicines, 
-  updateDonationStatus 
+import {
+  addMedicine,
+  getMedicines,
+  updateMedicine,
+  deleteMedicine,
+  getDonationMedicines,
+  updateDonationStatus
 } from "./services/firebase";
 import AutomationWorkflow from "./components/AutomationWorkflow";
 import { 
@@ -28,6 +28,15 @@ import {
   Lock, 
   AlertTriangle, 
   CheckCircle, 
+import {
+  Activity,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Lock,
+  AlertTriangle,
+  CheckCircle,
   Info,
   ShieldCheck,
   ChevronRight,
@@ -40,15 +49,29 @@ const DEFAULT_MOCK_USER = {
   email: "jane@example.com",
   phone: "9876543210",
   address: "123 Green Valley Road, Sector 4, Health City",
-  password: "Password123"
+  password: "Password123",
+  role: "donor"
+};
+
+const DEFAULT_MOCK_NGO = {
+  name: "Hope Clinic",
+  ngoName: "Hope Clinic",
+  registrationNumber: "NGO-12345",
+  contactPerson: "Dr. Alice Smith",
+  email: "hope@ngo.org",
+  phone: "9876543211",
+  address: "456 Hope Street, Relief City",
+  password: "Password123",
+  role: "ngo"
 };
 
 export default function App() {
   // Session & Authentication state
-  const [users, setUsers] = useState([DEFAULT_MOCK_USER]);
+  const [users, setUsers] = useState([DEFAULT_MOCK_USER, DEFAULT_MOCK_NGO]);
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentView, setCurrentView] = useState("landing");
+  const [landingRole, setLandingRole] = useState(null); // null | "donor" | "ngo"
 
   // Inventory & Donation Data State
   const [medicines, setMedicines] = useState([]);
@@ -74,11 +97,42 @@ export default function App() {
       const localData = localStorage.getItem("medicycle_state");
       if (localData) {
         const parsed = JSON.parse(localData);
-        if (parsed.users) setUsers(parsed.users);
+        if (parsed.users) {
+          let loadedUsers = parsed.users.map(u => ({
+            ...u,
+            role: u.role || "donor"
+          }));
+          // Ensure Jane Doe has a role field
+          loadedUsers = loadedUsers.map(u =>
+            u.email.toLowerCase() === DEFAULT_MOCK_USER.email.toLowerCase()
+              ? { ...DEFAULT_MOCK_USER, ...u, role: u.role || "donor" }
+              : u
+          );
+          // Ensure mock NGO user exists
+          const hasNgo = loadedUsers.some(u => u.email.toLowerCase() === DEFAULT_MOCK_NGO.email.toLowerCase());
+          if (!hasNgo) {
+            loadedUsers.push(DEFAULT_MOCK_NGO);
+          } else {
+            loadedUsers = loadedUsers.map(u =>
+              u.email.toLowerCase() === DEFAULT_MOCK_NGO.email.toLowerCase()
+                ? { ...DEFAULT_MOCK_NGO, ...u, role: u.role || "ngo" }
+                : u
+            );
+          }
+          setUsers(loadedUsers);
+        }
         if (parsed.isLoggedIn && parsed.currentUser) {
-          setCurrentUser(parsed.currentUser);
+          const loadedCurrentUser = {
+            ...parsed.currentUser,
+            role: parsed.currentUser.role || "donor"
+          };
+          setCurrentUser(loadedCurrentUser);
           setIsLoggedIn(true);
-          setCurrentView("dashboard");
+          if (loadedCurrentUser.role === "ngo") {
+            setCurrentView("ngoDashboard");
+          } else {
+            setCurrentView("dashboard");
+          }
         }
       }
     } catch (e) {
@@ -101,7 +155,7 @@ export default function App() {
     try {
       const userMeds = await getMedicines(currentUser.email);
       setMedicines(userMeds);
-      
+
       const allDonations = await getDonationMedicines();
       setDonationMedicines(allDonations);
 
@@ -127,7 +181,7 @@ export default function App() {
     setCurrentUser(null);
     setCurrentView("landing");
     setProfileSubState("placeholder");
-    
+
     // Update local storage
     try {
       const localData = localStorage.getItem("medicycle_state");
@@ -137,7 +191,7 @@ export default function App() {
         isLoggedIn: false,
         currentUser: null
       }));
-    } catch (e) {}
+    } catch (e) { }
     showToast("Logged out successfully.", "info");
   };
 
@@ -155,6 +209,17 @@ export default function App() {
     confirmPassword: ""
   });
   const [registerErrors, setRegisterErrors] = useState({});
+  const [ngoRegisterForm, setNgoRegisterForm] = useState({
+    ngoName: "",
+    registrationNumber: "",
+    contactPerson: "",
+    email: "",
+    phone: "",
+    address: "",
+    password: "",
+    confirmPassword: ""
+  });
+  const [ngoRegisterErrors, setNgoRegisterErrors] = useState({});
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
@@ -172,22 +237,29 @@ export default function App() {
     );
 
     if (foundUser) {
+      const userWithRole = { ...foundUser, role: foundUser.role || "donor" };
+      const updatedUsers = users.map(u => ({ ...u, role: u.role || "donor" }));
+      setUsers(updatedUsers);
       setIsLoggedIn(true);
-      setCurrentUser(foundUser);
-      setCurrentView("dashboard");
+      setCurrentUser(userWithRole);
+      if (userWithRole.role === "ngo") {
+        setCurrentView("ngoDashboard");
+      } else {
+        setCurrentView("dashboard");
+      }
       setLoginForm({ email: "", password: "" });
       setLoginErrors({});
-      
+
       // Save state to local storage
       localStorage.setItem("medicycle_state", JSON.stringify({
-        users,
+        users: updatedUsers,
         isLoggedIn: true,
-        currentUser: foundUser
+        currentUser: userWithRole
       }));
-      
-      showToast(`Welcome back, ${foundUser.name}!`);
+
+      showToast(`Welcome back, ${userWithRole.name}!`);
     } else {
-      setLoginErrors({ general: "Invalid email or password. Use Jane's mock credentials." });
+      setLoginErrors({ general: "Invalid email or password. Use mock credentials." });
       showToast("Login failed. Check details.", "error");
     }
   };
@@ -195,23 +267,23 @@ export default function App() {
   const handleRegisterSubmit = (e) => {
     e.preventDefault();
     const errors = {};
-    
+
     if (!registerForm.name.trim()) errors.name = "Full name is required.";
     else if (!/^[A-Za-z\s]+$/.test(registerForm.name)) errors.name = "Name can only contain letters.";
-    
+
     if (!registerForm.email.trim()) errors.email = "Email is required.";
     else if (!/\S+@\S+\.\S+/.test(registerForm.email)) errors.email = "Invalid email format.";
-    
+
     if (!registerForm.phone.trim()) errors.phone = "Phone number is required.";
     else if (!/^\d{10}$/.test(registerForm.phone)) errors.phone = "Phone must be exactly 10 digits.";
-    
+
     if (!registerForm.address.trim()) errors.address = "Residential address is required.";
-    
+
     if (!registerForm.password) errors.password = "Password is required.";
     else if (registerForm.password.length < 8 || !/\d/.test(registerForm.password)) {
       errors.password = "Password must be at least 8 characters and contain at least 1 number.";
     }
-    
+
     if (registerForm.confirmPassword !== registerForm.password) {
       errors.confirmPassword = "Passwords do not match.";
     }
@@ -233,7 +305,8 @@ export default function App() {
       email: registerForm.email,
       phone: registerForm.phone,
       address: registerForm.address,
-      password: registerForm.password
+      password: registerForm.password,
+      role: "donor"
     };
 
     const updatedUsers = [...users, newUser];
@@ -251,6 +324,100 @@ export default function App() {
     }));
 
     showToast("Account created successfully!");
+  };
+
+  const handleNgoRegisterSubmit = (e) => {
+    e.preventDefault();
+    const errors = {};
+
+    if (!ngoRegisterForm.ngoName.trim()) {
+      errors.ngoName = "NGO Name is required.";
+    }
+
+    if (!ngoRegisterForm.registrationNumber.trim()) {
+      errors.registrationNumber = "Registration number is required.";
+    }
+
+    if (!ngoRegisterForm.contactPerson.trim()) {
+      errors.contactPerson = "Contact person name is required.";
+    } else if (!/^[A-Za-z\s]+$/.test(ngoRegisterForm.contactPerson)) {
+      errors.contactPerson = "Contact person name can only contain letters.";
+    }
+
+    if (!ngoRegisterForm.email.trim()) {
+      errors.email = "Email is required.";
+    } else if (!/\S+@\S+\.\S+/.test(ngoRegisterForm.email)) {
+      errors.email = "Invalid email format.";
+    }
+
+    if (!ngoRegisterForm.phone.trim()) {
+      errors.phone = "Phone number is required.";
+    } else if (!/^\d{10}$/.test(ngoRegisterForm.phone)) {
+      errors.phone = "Phone must be exactly 10 digits.";
+    }
+
+    if (!ngoRegisterForm.address.trim()) {
+      errors.address = "Address is required.";
+    }
+
+    if (!ngoRegisterForm.password) {
+      errors.password = "Password is required.";
+    } else if (ngoRegisterForm.password.length < 8 || !/\d/.test(ngoRegisterForm.password)) {
+      errors.password = "Password must be at least 8 characters and contain at least 1 number.";
+    }
+
+    if (ngoRegisterForm.confirmPassword !== ngoRegisterForm.password) {
+      errors.confirmPassword = "Passwords do not match.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setNgoRegisterErrors(errors);
+      return;
+    }
+
+    const emailExists = users.some(u => u.email.toLowerCase() === ngoRegisterForm.email.toLowerCase());
+    if (emailExists) {
+      setNgoRegisterErrors({ email: "Email is already registered." });
+      showToast("Email already exists.", "error");
+      return;
+    }
+
+    const newUser = {
+      name: ngoRegisterForm.ngoName,
+      ngoName: ngoRegisterForm.ngoName,
+      registrationNumber: ngoRegisterForm.registrationNumber,
+      contactPerson: ngoRegisterForm.contactPerson,
+      email: ngoRegisterForm.email,
+      phone: ngoRegisterForm.phone,
+      address: ngoRegisterForm.address,
+      password: ngoRegisterForm.password,
+      role: "ngo"
+    };
+
+    const updatedUsers = [...users, newUser];
+    setUsers(updatedUsers);
+    setIsLoggedIn(true);
+    setCurrentUser(newUser);
+    setCurrentView("ngoDashboard");
+    setNgoRegisterForm({
+      ngoName: "",
+      registrationNumber: "",
+      contactPerson: "",
+      email: "",
+      phone: "",
+      address: "",
+      password: "",
+      confirmPassword: ""
+    });
+    setNgoRegisterErrors({});
+
+    localStorage.setItem("medicycle_state", JSON.stringify({
+      users: updatedUsers,
+      isLoggedIn: true,
+      currentUser: newUser
+    }));
+
+    showToast("NGO account created successfully!");
   };
 
   // ==========================================
@@ -426,17 +593,16 @@ export default function App() {
 
   return (
     <div className="flex flex-col min-h-screen">
-      
+
       {/* Toast Alert */}
       {toast.show && (
         <div className="fixed bottom-6 right-6 z-50 animate-fadeIn">
-          <div className={`flex items-center gap-3 px-5 py-3.5 rounded-lg shadow-lg border text-sm font-semibold bg-white ${
-            toast.type === "success" 
-              ? "text-primary border-green-200 shadow-green-100" 
-              : toast.type === "error" 
-              ? "text-red-600 border-red-200 shadow-red-100" 
+          <div className={`flex items-center gap-3 px-5 py-3.5 rounded-lg shadow-lg border text-sm font-semibold bg-white ${toast.type === "success"
+            ? "text-primary border-green-200 shadow-green-100"
+            : toast.type === "error"
+              ? "text-red-600 border-red-200 shadow-red-100"
               : "text-blue-600 border-blue-200 shadow-blue-100"
-          }`}>
+            }`}>
             {toast.type === "success" && <CheckCircle className="w-5 h-5 text-primary" />}
             {toast.type === "error" && <AlertTriangle className="w-5 h-5 text-red-500" />}
             {toast.type === "info" && <Info className="w-5 h-5 text-blue-500" />}
@@ -446,9 +612,9 @@ export default function App() {
       )}
 
       {/* Navigation */}
-      <Navbar 
-        isLoggedIn={isLoggedIn} 
-        currentUser={currentUser} 
+      <Navbar
+        isLoggedIn={isLoggedIn}
+        currentUser={currentUser}
         currentView={currentView}
         onViewChange={(view) => {
           setCurrentView(view);
@@ -459,14 +625,14 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 mt-[72px] px-4 sm:px-6 lg:px-8 py-10 max-w-7xl mx-auto w-full">
-        
+
         {/* ==========================================
             VIEW 1: LANDING PAGE
             ========================================== */}
         {currentView === "landing" && (
           <div className="animate-slideUp py-6 lg:py-12">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-              
+
               {/* Left Column Text */}
               <div className="lg:col-span-7 space-y-6">
                 <div className="inline-block bg-primary-light border border-primary/20 text-primary font-bold text-xs px-3.5 py-1.5 rounded-full uppercase tracking-wider">
@@ -478,20 +644,73 @@ export default function App() {
                 <p className="text-text-muted text-lg sm:text-xl font-medium leading-relaxed max-w-2xl">
                   Track medicine expiry dynamically and donate unused medications safely. Bridge the gap between medicine waste and healthcare access using AI-powered insights.
                 </p>
-                <div className="flex flex-wrap gap-4 pt-2">
-                  <button
-                    onClick={() => setCurrentView("register")}
-                    className="px-6 py-3.5 bg-primary hover:bg-primary-hover text-white font-extrabold rounded-md shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 group text-base"
-                  >
-                    Get Started
-                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </button>
-                  <button
-                    onClick={() => setCurrentView("login")}
-                    className="px-6 py-3.5 border border-primary/45 hover:bg-primary-light text-primary font-extrabold rounded-md transition-all text-base"
-                  >
-                    Sign In
-                  </button>
+                <div className="flex flex-col gap-4 pt-2">
+                  {!landingRole ? (
+                    <div className="flex flex-wrap gap-4">
+                      <button
+                        onClick={() => setLandingRole("donor")}
+                        className="px-6 py-3.5 bg-primary hover:bg-primary-hover text-white font-extrabold rounded-md shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 group text-base"
+                      >
+                        Continue as Donor
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                      <button
+                        onClick={() => setLandingRole("ngo")}
+                        className="px-6 py-3.5 border border-emerald-500 hover:bg-emerald-50 text-emerald-600 font-extrabold rounded-md transition-all text-base flex items-center gap-2 group"
+                      >
+                        Continue as NGO
+                        <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      </button>
+                    </div>
+                  ) : landingRole === "donor" ? (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          onClick={() => setCurrentView("register")}
+                          className="px-6 py-3.5 bg-primary hover:bg-primary-hover text-white font-extrabold rounded-md shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 group text-base"
+                        >
+                          Get Started
+                          <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentView("login")}
+                          className="px-6 py-3.5 border border-primary/45 hover:bg-primary-light text-primary font-extrabold rounded-md transition-all text-base"
+                        >
+                          Sign In
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setLandingRole(null)}
+                        className="text-xs text-text-muted hover:text-primary font-bold underline"
+                      >
+                        Back to Role Selection
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          onClick={() => setCurrentView("ngo-register")}
+                          className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-md shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-2 group text-base"
+                        >
+                          Register NGO
+                          <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentView("login")}
+                          className="px-6 py-3.5 border border-emerald-500 hover:bg-emerald-50 text-emerald-600 font-extrabold rounded-md transition-all text-base"
+                        >
+                          NGO Sign In
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setLandingRole(null)}
+                        className="text-xs text-text-muted hover:text-emerald-700 font-bold underline"
+                      >
+                        Back to Role Selection
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -528,7 +747,7 @@ export default function App() {
                         <p className="text-xs text-red-700 mt-0.5">Automated color badge warnings as chemicals degrade.</p>
                       </div>
                     </div>
-                    
+
                     <div className="flex gap-3 bg-emerald-50/50 p-3.5 rounded-md border border-emerald-100">
                       <ShieldCheck className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
                       <div>
@@ -554,8 +773,13 @@ export default function App() {
               <p className="text-text-muted text-sm mt-1">
                 Access your account or use mock credentials:
               </p>
-              <div className="mt-2.5 inline-block bg-primary-light border border-primary/25 rounded px-2.5 py-1 text-xs text-primary font-bold">
-                jane@example.com / Password123
+              <div className="mt-2.5 flex flex-col gap-1.5 items-center">
+                <div className="inline-block bg-primary-light border border-primary/25 rounded px-2.5 py-1 text-xs text-primary font-bold">
+                  Donor: jane@example.com / Password123
+                </div>
+                <div className="inline-block bg-emerald-50 border border-emerald-250 rounded px-2.5 py-1 text-xs text-emerald-700 font-bold">
+                  NGO: hope@ngo.org / Password123
+                </div>
               </div>
             </div>
 
@@ -650,7 +874,7 @@ export default function App() {
             </div>
 
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
-              
+
               {/* Full Name */}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
@@ -790,6 +1014,327 @@ export default function App() {
         )}
 
         {/* ==========================================
+            VIEW: NGO REGISTER PAGE
+            ========================================== */}
+        {currentView === "ngo-register" && (
+          <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-sm border border-gray-100 animate-slideUp glass-card">
+            <div className="text-center mb-6">
+              <span className="bg-primary-light text-primary border border-primary/20 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider animate-fadeIn">
+                NGO Portal
+              </span>
+              <h2 className="text-3xl font-extrabold text-text-main mt-2">Register NGO</h2>
+              <p className="text-text-muted text-sm mt-1">
+                Register your non-profit organization to receive and distribute verified medicines.
+              </p>
+            </div>
+
+            <form onSubmit={handleNgoRegisterSubmit} className="space-y-4">
+
+              {/* NGO Name */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <Activity className="w-4 h-4 text-primary" />
+                  NGO Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="Hope Clinic"
+                  value={ngoRegisterForm.ngoName}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, ngoName: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, ngoName: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.ngoName && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.ngoName}</span>}
+              </div>
+
+              {/* Registration Number */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-primary" />
+                  Registration Number
+                </label>
+                <input
+                  type="text"
+                  placeholder="NGO-12345"
+                  value={ngoRegisterForm.registrationNumber}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, registrationNumber: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, registrationNumber: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.registrationNumber && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.registrationNumber}</span>}
+              </div>
+
+              {/* Contact Person */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <User className="w-4 h-4 text-primary" />
+                  Contact Person
+                </label>
+                <input
+                  type="text"
+                  placeholder="Dr. Alice Smith"
+                  value={ngoRegisterForm.contactPerson}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, contactPerson: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, contactPerson: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.contactPerson && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.contactPerson}</span>}
+              </div>
+
+              {/* Email */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <Mail className="w-4 h-4 text-primary" />
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  placeholder="hope@ngo.org"
+                  value={ngoRegisterForm.email}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, email: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, email: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.email && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.email}</span>}
+              </div>
+
+              {/* Phone */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <Phone className="w-4 h-4 text-primary" />
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  placeholder="10-digit mobile"
+                  value={ngoRegisterForm.phone}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, phone: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, phone: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.phone && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.phone}</span>}
+              </div>
+
+              {/* Address */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  Address
+                </label>
+                <input
+                  type="text"
+                  placeholder="456 Hope Street, Relief City"
+                  value={ngoRegisterForm.address}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, address: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, address: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.address && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.address}</span>}
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-primary" />
+                  Password
+                </label>
+                <input
+                  type="password"
+                  placeholder="Min 8 chars, 1 number"
+                  value={ngoRegisterForm.password}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, password: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, password: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.password && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.password}</span>}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-text-main flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-primary" />
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  placeholder="Re-enter password"
+                  value={ngoRegisterForm.confirmPassword}
+                  onChange={(e) => {
+                    setNgoRegisterForm({ ...ngoRegisterForm, confirmPassword: e.target.value });
+                    setNgoRegisterErrors(prev => ({ ...prev, confirmPassword: "" }));
+                  }}
+                  className="w-full px-4 py-2.5 rounded border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-accent"
+                />
+                {ngoRegisterErrors.confirmPassword && <span className="text-xs text-red-600 font-medium block">{ngoRegisterErrors.confirmPassword}</span>}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded shadow-sm hover:shadow transition-all duration-200 text-sm mt-2"
+              >
+                Register NGO
+              </button>
+
+              <p className="text-center text-xs text-text-muted pt-2">
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentView("login");
+                    setNgoRegisterErrors({});
+                  }}
+                  className="text-primary font-bold hover:underline"
+                >
+                  Login here
+                </button>
+              </p>
+            </form>
+          </div>
+        )}
+
+        {/* ==========================================
+            VIEW: NGO DASHBOARD PLACEHOLDER
+            ========================================== */}
+        {isLoggedIn && currentView === "ngoDashboard" && (
+          <div className="animate-slideUp py-6 space-y-8">
+            <div className="bg-white rounded-lg border border-gray-100 shadow-lg p-8 glass-card">
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center text-primary border border-primary/20">
+                  <ShieldCheck className="w-8 h-8" />
+                </div>
+                <div>
+                  <span className="bg-primary-light text-primary border border-primary/20 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider animate-fadeIn">
+                    NGO Partner Portal
+                  </span>
+                  <h2 className="text-3xl font-extrabold text-text-main mt-1.5">
+                    Welcome, <span className="text-gradient">{currentUser?.name}</span>
+                  </h2>
+                </div>
+              </div>
+              <p className="text-text-muted text-lg max-w-2xl leading-relaxed">
+                This is your NGO partner workspace. Track available medicine donations and organize requests here.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+                {/* Available Donations */}
+                <div className="bg-emerald-50/30 border border-emerald-100 rounded-lg p-5 glass-card">
+                  <h4 className="font-bold text-emerald-800 text-lg mb-2">Available Donations</h4>
+                  <p className="text-sm text-text-muted">Browse verified medications offered by donors in your region.</p>
+                  <button
+                    onClick={() => setCurrentView("browse-donations")}
+                    className="mt-4 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded transition-all"
+                  >
+                    View Donations
+                  </button>
+                </div>
+                {/* My Requests */}
+                <div className="bg-emerald-50/30 border border-emerald-100 rounded-lg p-5 glass-card">
+                  <h4 className="font-bold text-emerald-800 text-lg mb-2">My Requests</h4>
+                  <p className="text-sm text-text-muted">Manage active requests and coordinate transportation pickups.</p>
+                  <button
+                    onClick={() => setCurrentView("my-requests")}
+                    className="mt-4 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded transition-all"
+                  >
+                    View Requests
+                  </button>
+                </div>
+                {/* Accepted Donations */}
+                <div className="bg-emerald-50/30 border border-emerald-100 rounded-lg p-5 glass-card">
+                  <h4 className="font-bold text-emerald-800 text-lg mb-2">Accepted Donations</h4>
+                  <p className="text-sm text-text-muted">Track history of successfully received and distributed medicine packages.</p>
+                  <button
+                    onClick={() => setCurrentView("accepted-donations")}
+                    className="mt-4 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-xs font-bold rounded transition-all"
+                  >
+                    View History
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            VIEW: NGO BROWSE DONATIONS PLACEHOLDER
+            ========================================== */}
+        {isLoggedIn && currentView === "browse-donations" && (
+          <div className="animate-slideUp py-6 space-y-8">
+            <div className="bg-white rounded-lg border border-gray-100 shadow-lg p-8 glass-card">
+              <h2 className="text-3xl font-extrabold text-text-main mb-4">
+                <span className="text-gradient">Available Donations</span>
+              </h2>
+              <p className="text-text-muted text-base">
+                No donations available in your area at the moment. Please check back later.
+              </p>
+              <button
+                onClick={() => setCurrentView("ngoDashboard")}
+                className="mt-6 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded transition-all"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            VIEW: NGO MY REQUESTS PLACEHOLDER
+            ========================================== */}
+        {isLoggedIn && currentView === "my-requests" && (
+          <div className="animate-slideUp py-6 space-y-8">
+            <div className="bg-white rounded-lg border border-gray-100 shadow-lg p-8 glass-card">
+              <h2 className="text-3xl font-extrabold text-text-main mb-4">
+                <span className="text-gradient">My Requests</span>
+              </h2>
+              <p className="text-text-muted text-base">
+                You do not have any active requests currently.
+              </p>
+              <button
+                onClick={() => setCurrentView("ngoDashboard")}
+                className="mt-6 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded transition-all"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
+            VIEW: NGO ACCEPTED DONATIONS PLACEHOLDER
+            ========================================== */}
+        {isLoggedIn && currentView === "accepted-donations" && (
+          <div className="animate-slideUp py-6 space-y-8">
+            <div className="bg-white rounded-lg border border-gray-100 shadow-lg p-8 glass-card">
+              <h2 className="text-3xl font-extrabold text-text-main mb-4">
+                <span className="text-gradient">Accepted Donations</span>
+              </h2>
+              <p className="text-text-muted text-base">
+                History of accepted medicine donations will appear here.
+              </p>
+              <button
+                onClick={() => setCurrentView("ngoDashboard")}
+                className="mt-6 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded transition-all"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ==========================================
             VIEW 4: USER DASHBOARD (AUTHENTICATED)
             ========================================== */}
         {isLoggedIn && currentView === "dashboard" && (
@@ -800,7 +1345,7 @@ export default function App() {
             VIEW 5: ADD / EDIT MEDICINE FORM (AUTHENTICATED)
             ========================================== */}
         {isLoggedIn && (currentView === "add-medicine" || currentView === "edit-medicine") && (
-          <MedicineForm 
+          <MedicineForm
             editingMedicine={currentView === "edit-medicine" ? editingMedicine : null}
             onSubmit={handleAddOrEditMedicine}
             onCancel={() => {
@@ -814,7 +1359,7 @@ export default function App() {
             VIEW 6: MEDICINE INVENTORY LIST (AUTHENTICATED)
             ========================================== */}
         {isLoggedIn && currentView === "medicine-list" && (
-          <MedicineList 
+          <MedicineList
             medicines={medicines}
             onEdit={handleStartEdit}
             onDelete={handleDeleteMedicine}
@@ -827,7 +1372,7 @@ export default function App() {
             VIEW 7: DONATION PAGE (AUTHENTICATED)
             ========================================== */}
         {isLoggedIn && currentView === "donation" && (
-          <DonationPage 
+          <DonationPage
             donationMedicines={donationMedicines}
             onUpdateStatus={handleUpdateDonationStatus}
             currentUser={currentUser}
@@ -850,19 +1395,23 @@ export default function App() {
             ========================================== */}
         {isLoggedIn && currentView === "profile" && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-slideUp">
-            
+
             {/* Left Column Profile Summary */}
             <div className="bg-white border border-gray-100 rounded-lg p-6 shadow-sm flex flex-col items-center text-center space-y-6">
               <div className="w-24 h-24 rounded-full bg-primary-light flex items-center justify-center text-primary font-extrabold text-3xl shadow-sm border border-primary/10">
                 {getInitials(currentUser.name)}
               </div>
-              
+
               <div className="space-y-1">
                 <h2 className="text-2xl font-black text-text-main">{currentUser.name}</h2>
                 <p className="text-sm font-semibold text-text-muted">{currentUser.email}</p>
                 <div className="pt-2">
-                  <span className="bg-primary-light text-primary border border-primary/20 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                    Verified Donor
+                  <span className={`border text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider ${
+                    currentUser.role === "ngo"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-primary-light text-primary border-primary/20"
+                  }`}>
+                    {currentUser.role === "ngo" ? "Verified NGO" : "Verified Donor"}
                   </span>
                 </div>
               </div>
@@ -876,14 +1425,14 @@ export default function App() {
                     Phone Number
                   </span>
                   <span className="font-bold text-text-main">
-                    {`(${currentUser.phone.slice(0,3)}) ${currentUser.phone.slice(3,6)}-${currentUser.phone.slice(6)}`}
+                    {`(${currentUser.phone.slice(0, 3)}) ${currentUser.phone.slice(3, 6)}-${currentUser.phone.slice(6)}`}
                   </span>
                 </div>
 
                 <div className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted font-bold flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-primary" />
-                    Residential Address
+                    {currentUser.role === "ngo" ? "Organization Address" : "Residential Address"}
                   </span>
                   <span className="font-semibold text-text-main text-xs leading-relaxed">
                     {currentUser.address}
@@ -896,11 +1445,10 @@ export default function App() {
               <div className="w-full flex flex-col gap-3">
                 <button
                   onClick={startEditProfile}
-                  className={`w-full py-2.5 rounded-md text-sm font-bold border transition-all ${
-                    profileSubState === "edit"
-                      ? "bg-primary text-white border-primary"
-                      : "bg-white text-primary border-primary/45 hover:bg-primary-light"
-                  }`}
+                  className={`w-full py-2.5 rounded-md text-sm font-bold border transition-all ${profileSubState === "edit"
+                    ? "bg-primary text-white border-primary"
+                    : "bg-white text-primary border-primary/45 hover:bg-primary-light"
+                    }`}
                 >
                   Edit Profile Details
                 </button>
@@ -910,11 +1458,10 @@ export default function App() {
                     setPasswordErrors({});
                     setProfileSubState("password");
                   }}
-                  className={`w-full py-2.5 rounded-md text-sm font-bold border transition-all ${
-                    profileSubState === "password"
-                      ? "bg-primary text-white border-primary"
-                      : "bg-white text-primary border-primary/45 hover:bg-primary-light"
-                  }`}
+                  className={`w-full py-2.5 rounded-md text-sm font-bold border transition-all ${profileSubState === "password"
+                    ? "bg-primary text-white border-primary"
+                    : "bg-white text-primary border-primary/45 hover:bg-primary-light"
+                    }`}
                 >
                   Change Password
                 </button>
@@ -929,7 +1476,7 @@ export default function App() {
 
             {/* Right Column Action Workspace */}
             <div className="lg:col-span-2 bg-white border border-gray-100 rounded-lg p-6 shadow-sm">
-              
+
               {/* Profile sub-state 1: Placeholder */}
               {profileSubState === "placeholder" && (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 space-y-4">
@@ -953,7 +1500,7 @@ export default function App() {
 
                   <form onSubmit={handleEditProfileSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      
+
                       {/* Name */}
                       <div className="space-y-1">
                         <label className="text-xs font-bold text-text-muted">Full Name</label>
@@ -997,7 +1544,7 @@ export default function App() {
 
                       {/* Address */}
                       <div className="space-y-1 md:col-span-2">
-                        <label className="text-xs font-bold text-text-muted">Residential Address</label>
+                        <label className="text-xs font-bold text-text-muted">{currentUser.role === "ngo" ? "Organization Address" : "Residential Address"}</label>
                         <input
                           type="text"
                           value={editProfileForm.address}
