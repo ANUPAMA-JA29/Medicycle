@@ -17,7 +17,8 @@ import {
   triggerExpiryCheck, 
   handleMedicineAdded, 
   handleMedicineDonated, 
-  handleDonationCompleted 
+  handleDonationCompleted,
+  handleDonationRequested
 } from "./services/automation";
 import {
   Activity,
@@ -474,7 +475,9 @@ export default function App() {
       
       // Trigger donation completed updates
       if (status === "Completed") {
-        handleDonationCompleted(updated, currentUser.email);
+        handleDonationCompleted(updated);
+      } else if (status === "Requested") {
+        handleDonationRequested(updated, currentUser, updated.userId);
       }
       
       fetchMedicinesData();
