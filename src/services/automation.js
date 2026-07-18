@@ -38,6 +38,15 @@ const DEFAULT_WORKFLOWS = [
     isActive: true
   },
   {
+    id: "wj-request",
+    name: "Medicine Request Notification",
+    description: "Triggers when an NGO or user submits a request for a donated medicine. Alerts the donor.",
+    trigger: "Donation Request Created",
+    condition: "Request Successfully Created",
+    actionType: "both",
+    isActive: true
+  },
+  {
     id: "wj-add",
     name: "New Medicine Inventory Tracker",
     description: "Triggers on medicine record creation. Populates feed and logs validation verification statistics.",
@@ -470,4 +479,104 @@ export const handleDonationCompleted = async (med) => {
     `Redirection complete! NGO picked up medicine '${med.medicineName}' (Qty: ${med.quantity}) from your inventory shelf.`,
     "donation"
   );
+};
+
+/**
+ * Additional Flow: Donation Requested
+ * Triggered when an NGO or user explicitly requests a medicine
+ */
+export const handleDonationRequested = async (med, requestData, donorEmail = "jane@example.com") => {
+  const workflows = getWorkflows();
+  const wConfig = workflows.find(w => w.id === "wj-request");
+  
+  if (!wConfig || !wConfig.isActive) {
+    addLog("wj-request", "Donation Request Notification skipped: Workflow is inactive.", "skipped");
+    return;
+  }
+
+  // 1. Log Execution
+  addLog(
+    "wj-request",
+    `Donation request match: ${requestData.organizationName || requestData.name} requested '${med.medicineName}' (Batch: ${med.batchNumber}).`,
+    "success"
+  );
+
+  // 2. Generate Email
+  const subject = `Action Required: Request Received for ${med.medicineName}`;
+  const requestTime = requestData.timestamp ? new Date(requestData.timestamp).toLocaleString() : new Date().toLocaleString();
+  
+  const emailBody = `
+    <div style="font-family: Outfit, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e8f5e9; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(46,125,50,0.05); background-color: #ffffff;">
+      <div style="background-color: #0284c7; padding: 24px; text-align: center; color: white;">
+        <h2 style="margin: 0; font-size: 22px; font-weight: 800; tracking: tight;">MediCycle AI Update</h2>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: #e0f2fe; opacity: 0.9;">Your listed medicine has been requested</p>
+      </div>
+      <div style="padding: 24px; color: #1f2937; line-height: 1.6; font-size: 15px;">
+        <p style="margin-top: 0; font-weight: 600; font-size: 16px;">Hello Donor,</p>
+        <p>Great news! An organization is in need of the medication you marked available for donation. Below are the details of the request:</p>
+        
+        <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <h3 style="margin-top: 0; color: #0369a1; font-size: 16px; margin-bottom: 12px;">Requested Medicine</h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0; width: 140px;">Medicine:</td>
+              <td style="color: #1f2937; font-weight: 700; padding: 4px 0;">${med.medicineName}</td>
+            </tr>
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0;">Requested Qty:</td>
+              <td style="color: #1f2937; font-weight: 700; padding: 4px 0;">${requestData.quantity} units</td>
+            </tr>
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0;">Batch Identifier:</td>
+              <td style="color: #4b5563; font-weight: 600; padding: 4px 0;">${med.batchNumber}</td>
+            </tr>
+          </table>
+          
+          <h3 style="margin-top: 16px; color: #0369a1; font-size: 16px; margin-bottom: 12px;">Requester Details</h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0; width: 140px;">Organization:</td>
+              <td style="color: #1f2937; font-weight: 700; padding: 4px 0;">${requestData.name || requestData.organizationName || "Unknown NGO"}</td>
+            </tr>
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0;">Contact Person:</td>
+              <td style="color: #4b5563; font-weight: 600; padding: 4px 0;">${requestData.contactPerson || "-"}</td>
+            </tr>
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0;">Email:</td>
+              <td style="color: #4b5563; padding: 4px 0;">${requestData.email || "-"}</td>
+            </tr>
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0;">Phone:</td>
+              <td style="color: #4b5563; padding: 4px 0;">${requestData.phone || "-"}</td>
+            </tr>
+            <tr>
+              <td style="color: #0284c7; font-weight: 600; padding: 4px 0;">Request Time:</td>
+              <td style="color: #4b5563; padding: 4px 0;">${requestTime}</td>
+            </tr>
+          </table>
+        </div>
+        
+        <p><strong>Next Steps:</strong> Please keep the package ready. Our logistics partner will contact you shortly to coordinate the pickup.</p>
+        
+        <p style="font-size: 13px; color: #6b7280; font-style: italic;">Thank you for your active contribution in saving lives through this noble gesture.</p>
+      </div>
+      <div style="background-color: #f4f7f5; padding: 16px; border-top: 1px solid #e8f5e9; text-align: center; font-size: 11px; color: #6b7280;">
+        MediCycle Donation verification framework.
+      </div>
+    </div>
+  `;
+
+  // 3. Actions
+  if (wConfig.actionType === "both" || wConfig.actionType === "email") {
+    await sendSimulatedEmail(donorEmail, subject, emailBody, "info");
+  }
+
+  if (wConfig.actionType === "both" || wConfig.actionType === "system") {
+    addDashboardNotification(
+      "Medicine Requested!",
+      `${requestData.name || requestData.organizationName || "An NGO"} has requested '${med.medicineName}' (Qty: ${requestData.quantity}).`,
+      "info"
+    );
+  }
 };
