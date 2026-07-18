@@ -175,6 +175,8 @@ const sendSimulatedEmail = async (recipient, subject, bodyContentHtml, type) => 
   };
 
   try {
+    console.log("Recipient:", recipient);
+    console.log("Type:", typeof recipient);
     await emailjs.send(
       EMAILJS_SERVICE_ID,
       EMAILJS_TEMPLATE_ID,
