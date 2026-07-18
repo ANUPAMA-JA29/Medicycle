@@ -1,5 +1,6 @@
 // MediCycle AI - Automation Workflow Service Layer
 // Bridges Database Operations with Trigger Actions & Messaging Engines
+import emailjs from '@emailjs/browser';
 
 const KEY_WORKFLOWS = "medicycle_workflows";
 const KEY_LOGS = "medicycle_automation_logs";
@@ -111,9 +112,6 @@ export const getSentEmails = () => {
 export const clearSentEmails = () => {
   initAutomationDB();
   localStorage.setItem(KEY_SENT_MAILS, JSON.stringify([]));
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("medicycle_mail_refresh"));
-  }
   return [];
 };
 
@@ -160,7 +158,11 @@ const addLog = (workflowId, details, status = "success") => {
   return newLog;
 };
 
-const sendSimulatedEmail = (recipient, subject, bodyContentHtml, type) => {
+const sendSimulatedEmail = async (recipient, subject, bodyContentHtml, type) => {
+  const EMAILJS_SERVICE_ID = "service_0xouo38";
+  const EMAILJS_TEMPLATE_ID = "template_tuc7seu";
+  const EMAILJS_PUBLIC_KEY = "8FS2r7vdqWYfxyXBf";
+
   const emails = getSentEmails();
   const newMail = {
     id: "mail_" + Math.random().toString(36).substring(2, 9),
@@ -168,13 +170,30 @@ const sendSimulatedEmail = (recipient, subject, bodyContentHtml, type) => {
     recipient,
     subject,
     body: bodyContentHtml,
-    type
+    type,
+    deliveryStatus: "pending"
   };
+
+  try {
+    await emailjs.send(
+      EMAILJS_SERVICE_ID,
+      EMAILJS_TEMPLATE_ID,
+      {
+        to_email: recipient,
+        subject: subject,
+        message_html: bodyContentHtml,
+      },
+      EMAILJS_PUBLIC_KEY
+    );
+    newMail.deliveryStatus = "sent";
+  } catch (err) {
+    newMail.deliveryStatus = "failed";
+    newMail.error = err?.text || String(err);
+    console.error("EmailJS send failed:", err);
+  }
+
   emails.unshift(newMail);
   localStorage.setItem(KEY_SENT_MAILS, JSON.stringify(emails));
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("medicycle_mail_refresh"));
-  }
   return newMail;
 };
 
@@ -219,9 +238,10 @@ export const triggerExpiryCheck = async (medicines = [], userEmail = "jane@examp
   const alertRegistryKey = `medicycle_expiry_alerts_run_${userEmail}`;
   let sentAlerts = JSON.parse(localStorage.getItem(alertRegistryKey) || "[]");
 
-  medicines.forEach(med => {
+  // Changed from forEach to for...of so await works correctly
+  for (const med of medicines) {
     // Check if medicine belongs to user
-    if (med.userId !== userEmail) return;
+    if (med.userId !== userEmail) continue;
 
     const days = getDaysRemaining(med.expiryDate);
     
@@ -231,7 +251,7 @@ export const triggerExpiryCheck = async (medicines = [], userEmail = "jane@examp
       
       // If alert was already successfully dispatched today, skip
       if (sentAlerts.includes(alertUniqueId)) {
-        return;
+        continue;
       }
 
       triggeredCount++;
@@ -291,7 +311,7 @@ export const triggerExpiryCheck = async (medicines = [], userEmail = "jane@examp
       
       // 3. Dispatch Actions
       if (wConfig.actionType === "both" || wConfig.actionType === "email") {
-        sendSimulatedEmail(userEmail, subject, emailBody, "expiry");
+        await sendSimulatedEmail(userEmail, subject, emailBody, "expiry");
       }
       
       if (wConfig.actionType === "both" || wConfig.actionType === "system") {
@@ -302,7 +322,7 @@ export const triggerExpiryCheck = async (medicines = [], userEmail = "jane@examp
         );
       }
     }
-  });
+  }
 
   // Save registry to prevent spamming
   localStorage.setItem(alertRegistryKey, JSON.stringify(sentAlerts));
@@ -384,7 +404,7 @@ export const handleMedicineDonated = async (med, userEmail = "jane@example.com")
 
   // 3. Actions
   if (wConfig.actionType === "both" || wConfig.actionType === "email") {
-    sendSimulatedEmail(userEmail, subject, emailBody, "donation");
+    await sendSimulatedEmail(userEmail, subject, emailBody, "donation");
   }
 
   if (wConfig.actionType === "both" || wConfig.actionType === "system") {
@@ -427,7 +447,7 @@ export const handleMedicineAdded = async (med, userEmail = "jane@example.com") =
 
   // Note: if category is immediately listed as availableForDonation during creation, we should also trigger handleMedicineDonated
   if (med.availableForDonation) {
-    handleMedicineDonated(med, userEmail);
+    await handleMedicineDonated(med, userEmail);
   }
 };
 

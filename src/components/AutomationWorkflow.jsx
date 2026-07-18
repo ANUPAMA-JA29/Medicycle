@@ -34,10 +34,7 @@ export default function AutomationWorkflow({ medicines, currentUser, onShowToast
 
   useEffect(() => {
     loadAutomationData();
-    const handleMailRefresh = () => loadAutomationData();
-    window.addEventListener("medicycle_mail_refresh", handleMailRefresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return () => window.removeEventListener("medicycle_mail_refresh", handleMailRefresh);
   }, []);
 
   const loadAutomationData = () => {
@@ -367,16 +364,33 @@ export default function AutomationWorkflow({ medicines, currentUser, onShowToast
                       <span className="text-[10px] font-bold text-primary font-mono truncate">
                         TO: {mail.recipient}
                       </span>
-                      <span className="text-[9px] text-text-muted whitespace-nowrap">
-                        {new Date(mail.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-wide ${
+                          mail.deliveryStatus === "sent" 
+                            ? "bg-green-100 text-green-800" 
+                            : mail.deliveryStatus === "failed" 
+                            ? "bg-red-100 text-red-800" 
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}>
+                          {mail.deliveryStatus || "pending"}
+                        </span>
+                        <span className="text-[9px] text-text-muted whitespace-nowrap">
+                          {new Date(mail.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
                     </div>
                     <h4 className="text-xs font-black text-text-main line-clamp-1 leading-snug">
                       {mail.subject}
                     </h4>
-                    <p className="text-[11px] text-text-muted line-clamp-1">
-                      SMTP pipeline secure processing complete. Click to render.
-                    </p>
+                    {mail.deliveryStatus === "failed" ? (
+                      <p className="text-[10px] text-red-650 font-medium truncate">
+                        Error: {mail.error || "Unknown delivery failure"}
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-text-muted line-clamp-1">
+                        SMTP pipeline processing complete. Click to render.
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -387,21 +401,41 @@ export default function AutomationWorkflow({ medicines, currentUser, onShowToast
                   <div className="h-full flex flex-col overflow-hidden">
                     {/* Header */}
                     <div className="p-4 bg-gray-50/50 border-b border-gray-100 text-left text-xs space-y-1 flex-shrink-0">
-                      <div>
-                        <span className="font-bold text-text-muted">From:</span>{" "}
-                        <span className="font-semibold text-primary">MediCycle AI Engine &lt;noreply@medicycle.ai&gt;</span>
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <div>
+                            <span className="font-bold text-text-muted text-[10px] uppercase tracking-wider mr-1">From:</span>{" "}
+                            <span className="font-semibold text-primary">MediCycle AI Engine &lt;noreply@medicycle.ai&gt;</span>
+                          </div>
+                          <div>
+                            <span className="font-bold text-text-muted text-[10px] uppercase tracking-wider mr-1">To:</span>{" "}
+                            <span className="font-semibold text-text-main">{selectedMail.recipient}</span>
+                          </div>
+                          <div>
+                            <span className="font-bold text-text-muted text-[10px] uppercase tracking-wider mr-1">Subject:</span>{" "}
+                            <span className="font-semibold text-text-main">{selectedMail.subject}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            selectedMail.deliveryStatus === "sent" 
+                              ? "bg-green-150 text-green-800 border border-green-200" 
+                              : selectedMail.deliveryStatus === "failed" 
+                              ? "bg-red-150 text-red-800 border border-red-200" 
+                              : "bg-yellow-150 text-yellow-800 border border-yellow-200"
+                          }`}>
+                            {selectedMail.deliveryStatus || "pending"}
+                          </span>
+                          <div className="text-[10px] text-text-muted">
+                            {new Date(selectedMail.timestamp).toLocaleString()}
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-bold text-text-muted">To:</span>{" "}
-                        <span className="font-semibold text-text-main">{selectedMail.recipient}</span>
-                      </div>
-                      <div>
-                        <span className="font-bold text-text-muted">Subject:</span>{" "}
-                        <span className="font-semibold text-text-main">{selectedMail.subject}</span>
-                      </div>
-                      <div className="text-[10px] text-text-muted">
-                        <span className="font-bold">Sent:</span> {new Date(selectedMail.timestamp).toLocaleString()}
-                      </div>
+                      {selectedMail.deliveryStatus === "failed" && (
+                        <div className="mt-2 p-2.5 bg-red-50 border border-red-100 rounded text-red-800 text-[11px] font-mono whitespace-pre-wrap">
+                          <strong>SMTP Delivery Error:</strong> {selectedMail.error || "Unknown EmailJS delivery error"}
+                        </div>
+                      )}
                     </div>
                     
                     {/* HTML Content render */}
