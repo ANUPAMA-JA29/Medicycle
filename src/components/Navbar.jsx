@@ -12,6 +12,15 @@ export default function Navbar({ isLoggedIn, currentUser, currentView, onViewCha
     { id: "profile", label: "Profile", icon: User },
   ];
 
+  const ngoNavItems = [
+    { id: "ngoDashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "browse-donations", label: "Browse Donations", icon: Gift },
+    { id: "my-requests", label: "My Requests", icon: List },
+    { id: "profile", label: "Profile", icon: User },
+  ];
+
+  const currentNavItems = currentUser?.role === "ngo" ? ngoNavItems : navItems;
+
   const handleNavClick = (viewId) => {
     onViewChange(viewId);
     setMobileMenuOpen(false);
@@ -20,11 +29,11 @@ export default function Navbar({ isLoggedIn, currentUser, currentView, onViewCha
   return (
     <header className="fixed top-0 left-0 right-0 h-[72px] glass-header z-50 transition-all duration-300">
       <div className="max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        
+
         {/* Logo */}
-        <div 
-          className="flex items-center gap-2 cursor-pointer group" 
-          onClick={() => handleNavClick(isLoggedIn ? "dashboard" : "landing")}
+        <div
+          className="flex items-center gap-2 cursor-pointer group"
+          onClick={() => handleNavClick(isLoggedIn ? (currentUser?.role === "ngo" ? "ngoDashboard" : "dashboard") : "landing")}
         >
           <div className="w-9 h-9 rounded-lg bg-primary-light flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-all duration-300">
             <Activity className="w-5 h-5 stroke-[2.5]" />
@@ -39,18 +48,17 @@ export default function Navbar({ isLoggedIn, currentUser, currentView, onViewCha
           {isLoggedIn ? (
             <>
               <div className="flex items-center gap-1 mr-4">
-                {navItems.map((item) => {
+                {currentNavItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = currentView === item.id;
                   return (
                     <button
                       key={item.id}
                       onClick={() => handleNavClick(item.id)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${
-                        isActive
+                      className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${isActive
                           ? "bg-primary text-white shadow-sm"
                           : "text-text-main hover:text-primary hover:bg-primary-light"
-                      }`}
+                        }`}
                     >
                       <Icon className="w-4 h-4" />
                       {item.label}
@@ -60,7 +68,7 @@ export default function Navbar({ isLoggedIn, currentUser, currentView, onViewCha
               </div>
 
               <div className="h-6 w-px bg-gray-200 mr-2"></div>
-              
+
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-text-muted">
                   Hi, <span className="font-semibold text-text-main">{currentUser?.name}</span>
@@ -108,18 +116,17 @@ export default function Navbar({ isLoggedIn, currentUser, currentView, onViewCha
         <div className="md:hidden absolute top-[72px] left-0 right-0 bg-white border-b border-gray-200 shadow-lg px-4 py-4 space-y-2 animate-fadeIn z-40">
           {isLoggedIn ? (
             <>
-              {navItems.map((item) => {
+              {currentNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentView === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => handleNavClick(item.id)}
-                    className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-md text-base font-semibold transition-all ${
-                      isActive
+                    className={`flex items-center gap-3 w-full px-4 py-2.5 rounded-md text-base font-semibold transition-all ${isActive
                         ? "bg-primary text-white"
                         : "text-text-main hover:bg-primary-light hover:text-primary"
-                    }`}
+                      }`}
                   >
                     <Icon className="w-5 h-5" />
                     {item.label}
