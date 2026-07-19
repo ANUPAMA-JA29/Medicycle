@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Navbar from "./components/Navbar";
 import Dashboard from "./components/Dashboard";
 import MedicineForm from "./components/MedicineForm";
@@ -13,6 +13,7 @@ import {
   updateDonationStatus
 } from "./services/firebase";
 import AutomationWorkflow from "./components/AutomationWorkflow";
+import ChatBot from "./components/ChatBot";
 import { 
   triggerExpiryCheck, 
   handleMedicineAdded, 
@@ -32,7 +33,8 @@ import {
   Info,
   ShieldCheck,
   ChevronRight,
-  Sparkles
+  List,
+  Truck
 } from "lucide-react";
 
 // Mock default user
@@ -68,8 +70,6 @@ export default function App() {
   // Inventory & Donation Data State
   const [medicines, setMedicines] = useState([]);
   const [donationMedicines, setDonationMedicines] = useState([]);
-  const [loading, setLoading] = useState(false);
-
   // Edit states
   const [editingMedicine, setEditingMedicine] = useState(null);
 
@@ -133,17 +133,8 @@ export default function App() {
   }, []);
 
   // Fetch medicines whenever currentUser changes
-  useEffect(() => {
-    if (isLoggedIn && currentUser) {
-      fetchMedicinesData();
-    } else {
-      setMedicines([]);
-    }
-  }, [isLoggedIn, currentUser]);
-
-  const fetchMedicinesData = async () => {
+  const fetchMedicinesData = useCallback(async () => {
     if (!currentUser) return;
-    setLoading(true);
     try {
       const userMeds = await getMedicines(currentUser.email);
       setMedicines(userMeds);
@@ -155,10 +146,16 @@ export default function App() {
       triggerExpiryCheck(userMeds, currentUser.email);
     } catch (e) {
       showToast("Error connecting to inventory database.", "error");
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (isLoggedIn && currentUser) {
+      fetchMedicinesData();
+    } else {
+      setMedicines([]);
+    }
+  }, [isLoggedIn, currentUser, fetchMedicinesData]);
 
   // Helper to trigger toast
   const showToast = (message, type = "success") => {
@@ -1263,70 +1260,193 @@ export default function App() {
         )}
 
         {/* ==========================================
-            VIEW: NGO BROWSE DONATIONS PLACEHOLDER
+            VIEW: NGO BROWSE DONATIONS
             ========================================== */}
         {isLoggedIn && currentView === "browse-donations" && (
-          <div className="animate-slideUp py-6 space-y-8">
-            <div className="bg-white rounded-lg border border-gray-100 shadow-lg p-8 glass-card">
-              <h2 className="text-3xl font-extrabold text-text-main mb-4">
-                <span className="text-gradient">Available Donations</span>
-              </h2>
-              <p className="text-text-muted text-base">
-                No donations available in your area at the moment. Please check back later.
-              </p>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
               <button
                 onClick={() => setCurrentView("ngoDashboard")}
-                className="mt-6 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded transition-all"
+                className="px-4 py-2 bg-white border border-gray-200 text-text-main text-sm font-bold rounded transition-all hover:bg-gray-50 flex items-center gap-1.5 shadow-sm"
               >
-                Back to Dashboard
+                &larr; Back to NGO Dashboard
               </button>
             </div>
+            <DonationPage
+              donationMedicines={donationMedicines}
+              onUpdateStatus={handleUpdateDonationStatus}
+              currentUser={currentUser}
+            />
           </div>
         )}
 
         {/* ==========================================
-            VIEW: NGO MY REQUESTS PLACEHOLDER
+            VIEW: NGO MY REQUESTS
             ========================================== */}
-        {isLoggedIn && currentView === "my-requests" && (
-          <div className="animate-slideUp py-6 space-y-8">
-            <div className="bg-white rounded-lg border border-gray-100 shadow-lg p-8 glass-card">
-              <h2 className="text-3xl font-extrabold text-text-main mb-4">
-                <span className="text-gradient">My Requests</span>
-              </h2>
-              <p className="text-text-muted text-base">
-                You do not have any active requests currently.
-              </p>
-              <button
-                onClick={() => setCurrentView("ngoDashboard")}
-                className="mt-6 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded transition-all"
-              >
-                Back to Dashboard
-              </button>
+        {isLoggedIn && currentView === "my-requests" && (() => {
+          const requestedMeds = donationMedicines.filter(
+            (med) => med.status === "Requested" && med.requestedBy === currentUser?.email
+          );
+          return (
+            <div className="animate-slideUp py-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-extrabold text-text-main tracking-tight">
+                  My Active <span className="text-gradient">Requests</span>
+                </h2>
+                <button
+                  onClick={() => setCurrentView("ngoDashboard")}
+                  className="px-4 py-2 bg-white border border-gray-200 text-text-main text-sm font-bold rounded hover:bg-gray-50 transition-all shadow-sm"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+
+              {requestedMeds.length === 0 ? (
+                <div className="bg-white rounded-lg border border-gray-150 shadow-lg p-12 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+                    <List className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-text-main">No active requests</h3>
+                    <p className="text-text-muted text-sm max-w-sm mx-auto">
+                      You do not have any active requests currently. Go to "Browse Donations" to request medicines!
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setCurrentView("browse-donations")}
+                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded transition-all shadow-sm"
+                  >
+                    Browse Available Donations
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {requestedMeds.map((med) => {
+                    const donorUser = users.find(u => u.email.toLowerCase() === med.userId.toLowerCase());
+                    return (
+                      <div key={med.medicineId} className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all duration-300">
+                        <div className="relative h-44 bg-gray-50 border-b border-gray-100">
+                          <img 
+                            src={med.medicineImage || "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=500"} 
+                            alt={med.medicineName} 
+                            className="w-full h-full object-cover"
+                            onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=500" }}
+                          />
+                          <div className="absolute top-3 right-3">
+                            <span className="bg-amber-100 text-amber-850 border border-amber-200 px-2.5 py-1 text-xs font-bold rounded-full flex items-center gap-1 shadow-sm">
+                              <Truck className="w-3.5 h-3.5 text-amber-700" />
+                              Awaiting Pickup
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="font-extrabold text-lg text-text-main line-clamp-1">{med.medicineName}</h3>
+                              <span className="text-xs bg-gray-100 px-2.5 py-0.5 rounded-full font-semibold text-text-muted">{med.category}</span>
+                            </div>
+                            <p className="text-xs font-medium text-text-muted">{med.manufacturer}</p>
+                            
+                            <div className="bg-gray-50/50 p-3.5 rounded-md border border-gray-100 text-xs space-y-1.5 mt-2">
+                              <div className="font-bold text-primary border-b border-gray-100 pb-1 flex items-center gap-1">
+                                <User className="w-3.5 h-3.5" /> Donor Details
+                              </div>
+                              <div>Name: <span className="font-semibold text-text-main">{donorUser?.name || "Mock Donor"}</span></div>
+                              <div>Phone: <span className="font-semibold text-text-main">{donorUser?.phone || "9876543210"}</span></div>
+                              <div className="line-clamp-2">Pickup: <span className="font-semibold text-text-main">{donorUser?.address || "123 Health Road"}</span></div>
+                            </div>
+                          </div>
+
+                          <div className="pt-4 border-t border-gray-100 space-y-2">
+                            <button
+                              onClick={() => handleUpdateDonationStatus(med.medicineId, "Completed")}
+                              className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded shadow-sm transition-all"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Confirm Courier Collection
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ==========================================
-            VIEW: NGO ACCEPTED DONATIONS PLACEHOLDER
+            VIEW: NGO ACCEPTED DONATIONS
             ========================================== */}
-        {isLoggedIn && currentView === "accepted-donations" && (
-          <div className="animate-slideUp py-6 space-y-8">
-            <div className="bg-white rounded-lg border border-gray-100 shadow-lg p-8 glass-card">
-              <h2 className="text-3xl font-extrabold text-text-main mb-4">
-                <span className="text-gradient">Accepted Donations</span>
-              </h2>
-              <p className="text-text-muted text-base">
-                History of accepted medicine donations will appear here.
-              </p>
-              <button
-                onClick={() => setCurrentView("ngoDashboard")}
-                className="mt-6 px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded transition-all"
-              >
-                Back to Dashboard
-              </button>
+        {isLoggedIn && currentView === "accepted-donations" && (() => {
+          const completedMeds = donationMedicines.filter(
+            (med) => med.status === "Completed" && med.requestedBy === currentUser?.email
+          );
+          return (
+            <div className="animate-slideUp py-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-3xl font-extrabold text-text-main tracking-tight">
+                  Accepted <span className="text-gradient">Donations</span>
+                </h2>
+                <button
+                  onClick={() => setCurrentView("ngoDashboard")}
+                  className="px-4 py-2 bg-white border border-gray-200 text-text-main text-sm font-bold rounded hover:bg-gray-50 transition-all shadow-sm"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+
+              {completedMeds.length === 0 ? (
+                <div className="bg-white rounded-lg border border-gray-150 shadow-lg p-12 text-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-bold text-text-main">No history found</h3>
+                    <p className="text-text-muted text-sm max-w-sm mx-auto">
+                      You have not completed any medicine donations yet. Active distributions will record audits here.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden p-6">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-150 text-text-main font-bold">
+                          <th className="p-3">Medicine Name</th>
+                          <th className="p-3">Category</th>
+                          <th className="p-3">Quantity</th>
+                          <th className="p-3">Expiry Date</th>
+                          <th className="p-3">Donor Source</th>
+                          <th className="p-3">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 font-medium text-text-main">
+                        {completedMeds.map((med) => (
+                          <tr key={med.medicineId} className="hover:bg-gray-50/30">
+                            <td className="p-3 font-bold">{med.medicineName}</td>
+                            <td className="p-3"><span className="bg-gray-100 px-2 py-0.5 rounded font-semibold text-text-muted text-[10px]">{med.category}</span></td>
+                            <td className="p-3 font-semibold">{med.quantity} Units</td>
+                            <td className="p-3 text-red-650">{med.expiryDate}</td>
+                            <td className="p-3 text-text-muted">{med.userId}</td>
+                            <td className="p-3">
+                              <span className="bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+                                Completed
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ==========================================
             VIEW 4: USER DASHBOARD (AUTHENTICATED)
@@ -1650,6 +1770,9 @@ export default function App() {
         )}
 
       </main>
+
+      {/* AI Chatbot Assistant - Floating widget */}
+      <ChatBot currentUser={currentUser} medicines={medicines} />
 
       {/* Footer */}
       <footer className="bg-white border-t border-gray-150 py-6 mt-12 text-center text-text-muted text-xs font-semibold">

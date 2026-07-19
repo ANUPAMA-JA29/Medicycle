@@ -3,14 +3,11 @@ import {
   getFirestore, 
   collection, 
   doc, 
-  setDoc, 
-  getDoc, 
   getDocs, 
   updateDoc, 
   deleteDoc, 
   query, 
   where, 
-  orderBy, 
   addDoc, 
   serverTimestamp 
 } from "firebase/firestore";
@@ -253,8 +250,11 @@ export const getDonationMedicines = async () => {
 /**
  * Update donation status of a medicine (Available, Requested, Completed)
  */
-export const updateDonationStatus = async (medicineId, status) => {
+export const updateDonationStatus = async (medicineId, status, requestedBy = null) => {
   const updateData = { status };
+  if (requestedBy !== null) {
+    updateData.requestedBy = requestedBy;
+  }
   // If completed, we can mark as no longer available for donation or keep it for records
   if (status === "Completed") {
     // Optional: we can set availableForDonation to false or keep it. Let's keep it but status is completed

@@ -9,7 +9,6 @@ import {
   Clock, 
   Thermometer, 
   Calendar, 
-  Layers, 
   AlertTriangle 
 } from "lucide-react";
 

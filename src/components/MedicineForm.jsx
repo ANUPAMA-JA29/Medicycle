@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Plus, Save, X, Calendar, Package, Tag, Layers, HelpCircle, Info, Image } from "lucide-react";
+import { Save, X, Calendar, Package, Tag, Layers, HelpCircle, Info, Image } from "lucide-react";
 
 const CATEGORIES = [
   "Antibiotics",

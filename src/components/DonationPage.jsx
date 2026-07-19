@@ -7,10 +7,7 @@ import {
   CheckCircle, 
   ArrowRight, 
   FileCheck, 
-  Info, 
-  Truck, 
-  Tag, 
-  Calendar 
+  Truck 
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -205,13 +202,19 @@ export default function DonationPage({ donationMedicines, onUpdateStatus, curren
                           <Truck className="w-4 h-4 flex-shrink-0" />
                           NGO requested package. Awaiting courier.
                         </div>
-                        <button
-                          onClick={() => onUpdateStatus(med.medicineId, "Completed")}
-                          className="w-full flex items-center justify-center gap-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded shadow-sm transition-all duration-200"
-                        >
-                          <FileCheck className="w-4 h-4" />
-                          Confirm Pickup & Complete
-                        </button>
+                        {(med.requestedBy === currentUser?.email || med.userId === currentUser?.email) ? (
+                          <button
+                            onClick={() => onUpdateStatus(med.medicineId, "Completed")}
+                            className="w-full flex items-center justify-center gap-1 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded shadow-sm transition-all duration-200"
+                          >
+                            <FileCheck className="w-4 h-4" />
+                            Confirm Pickup & Complete
+                          </button>
+                        ) : (
+                          <div className="text-xs text-text-muted italic text-center">
+                            Awaiting pickup confirmation.
+                          </div>
+                        )}
                       </div>
                     )}
 
